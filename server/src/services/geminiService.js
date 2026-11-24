@@ -92,40 +92,52 @@ Analyze alignment, extract matching and missing keywords, identify up to 4 key c
   const candidateModels = [
     process.env.GEMINI_MODEL,
     'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-3.7-flash',
     'gemini-3.8-flash',
+    'gemini-3.5-flash-lite',
     'gemini-2.5-flash'
   ].filter(Boolean);
 
   let lastError = null;
 
   for (const model of candidateModels) {
-    try {
-      const response = await ai.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          systemInstruction,
-          responseMimeType: 'application/json',
-          responseSchema
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const response = await ai.models.generateContent({
+          model,
+          contents: prompt,
+          config: {
+            systemInstruction,
+            responseMimeType: 'application/json',
+            responseSchema
+          }
+        });
+
+        const rawText = response.text;
+        if (!rawText) {
+          throw new Error('Gemini API returned an empty response.');
         }
-      });
 
-      const rawText = response.text;
-      if (!rawText) {
-        throw new Error('Gemini API returned an empty response.');
+        const parsedData = JSON.parse(rawText);
+
+        // Ensure matchScore stays clamped between 0 and 100
+        if (typeof parsedData.matchScore === 'number') {
+          parsedData.matchScore = Math.max(0, Math.min(100, Math.round(parsedData.matchScore)));
+        }
+
+        return parsedData;
+      } catch (err) {
+        lastError = err;
+        const is503 = err.message && err.message.includes('503');
+        if (is503 && attempt === 1) {
+          console.warn(`[GeminiService] Model ${model} is experiencing temporary high demand (503). Retrying in 1.5s...`);
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          continue;
+        }
+        console.warn(`[GeminiService] Model ${model} encountered an issue: ${err.message}. Trying next candidate...`);
+        break;
       }
-
-      const parsedData = JSON.parse(rawText);
-
-      // Ensure matchScore stays clamped between 0 and 100
-      if (typeof parsedData.matchScore === 'number') {
-        parsedData.matchScore = Math.max(0, Math.min(100, Math.round(parsedData.matchScore)));
-      }
-
-      return parsedData;
-    } catch (err) {
-      lastError = err;
-      console.warn(`[GeminiService] Model ${model} encountered an issue: ${err.message}. Trying next candidate...`);
     }
   }
 

@@ -1,14 +1,14 @@
 # RoleFit — Smart Resume & Job Description Matcher
 
-RoleFit is a full-stack MVP web application built with a clean monorepo architecture (`client/` and `server/`). It analyzes candidate resumes against job descriptions using **Google Gemini 2.5 Flash** with **Structured Outputs**, providing ATS match scoring, keyword matrix comparisons, candidate strengths, and actionable resume optimization recommendations.
+RoleFit is a full-stack MVP web application built with a clean monorepo architecture (`client/` and `server/`), configured for seamless single-project deployment on **Vercel** as well as local development. It analyzes candidate resumes against job descriptions using **Google Gemini API** with **Structured Outputs**, providing ATS match scoring, keyword matrix comparisons, candidate strengths, and actionable resume optimization recommendations.
 
 ---
 
 ## 🚀 Features
 
-- **PDF Resume Upload**: Drag-and-drop or file picker with 5MB validation, MIME/extension checks, and in-memory parsing.
+- **PDF Resume Upload**: Drag-and-drop or file picker with 5MB validation, MIME/extension checks, and in-memory parsing via `multer.memoryStorage()` (no server disk writes, 100% serverless-ready).
 - **Job Description Input**: Clean textarea with real-time word and character counters, plus a "Paste Sample JD" quick-fill button.
-- **Gemini 2.5 Flash Structured Outputs**: Strict JSON schema evaluation acting as an expert ATS specialist and senior technical recruiter.
+- **Gemini Structured Outputs**: Strict JSON schema evaluation acting as an expert ATS specialist and senior technical recruiter.
 - **ATS Match Score Gauge**: Circular SVG progress gauge color-coded by match level:
   - 🟢 **Green (>= 75)**: Strong Match
   - 🟡 **Amber (50 - 74)**: Moderate Match
@@ -16,8 +16,8 @@ RoleFit is a full-stack MVP web application built with a clean monorepo architec
 - **Keyword Matrix**: Side-by-side pill badges distinguishing **Matched Keywords** from **Missing Keywords**.
 - **Candidate Strengths**: Top competitive advantages aligned with the target role (max 4).
 - **Actionable ATS Optimizations**: Targeted rewrites detailing the resume gap, recommended phrasing, and recruiter impact (max 4).
-- **Graceful Error Handling**: Helpful alerts for missing fields, non-PDF files, unselectable/scanned PDFs, and API key configuration.
-- **Reset Workflow**: Seamless "Reset / Analyze Another" button to clear state and test multiple roles.
+- **Vercel Ready**: Full monorepo configuration deploying both the Vite React SPA and Express API as serverless functions in one project.
+- **Relative Path API**: Client communicates using relative `/api/*` endpoints in production and development proxies locally.
 
 ---
 
@@ -28,11 +28,11 @@ RoleFit is a full-stack MVP web application built with a clean monorepo architec
 - **Tailwind CSS** (Modern slate & indigo SaaS theme)
 - **Lucide React** (Clean icons)
 
-### Backend (`server/`)
+### Backend (`server/` & `api/`)
 - **Node.js** + **Express**
-- **@google/genai** (Official Google Gen AI SDK for Gemini 2.5 Flash)
-- **multer** (Memory storage for direct buffer extraction without disk clutter)
-- **pdf-parse** (Extracts plain text from resume PDF)
+- **@google/genai** (Official Google Gen AI SDK)
+- **multer** (`memoryStorage` for direct in-memory buffer processing without disk I/O)
+- **pdf-parse** (Extracts plain text from in-memory resume PDF buffer)
 - **cors**, **dotenv**
 
 ---
@@ -41,6 +41,9 @@ RoleFit is a full-stack MVP web application built with a clean monorepo architec
 
 ```text
 rolefit/
+├── api/
+│   └── index.js                    # Serverless entry point exporting Express app for Vercel
+├── vercel.json                     # Vercel deployment configuration (build, output, and rewrites)
 ├── client/                         # Frontend React + Vite
 │   ├── src/
 │   │   ├── components/
@@ -55,27 +58,28 @@ rolefit/
 │   │   │   ├── StrengthsList.jsx
 │   │   │   └── SummaryCard.jsx
 │   │   ├── services/
-│   │   │   └── api.js              # Fetch client wrapper
+│   │   │   └── api.js              # Fetch client using relative /api paths
 │   │   ├── App.jsx                 # Application layout & state orchestration
 │   │   ├── index.css               # Tailwind CSS directives
 │   │   └── main.jsx
 │   ├── index.html
 │   ├── tailwind.config.js
-│   ├── vite.config.js              # Configured with proxy to port 5000
+│   ├── vite.config.js              # Vite dev server with proxy to port 5000
 │   └── package.json
 │
 ├── server/                         # Backend Express API
 │   ├── src/
+│   │   ├── app.js                  # Modular Express app (reusable for serverless & local)
+│   │   ├── index.js                # Local Express HTTP listener on port 5000
 │   │   ├── controllers/
 │   │   │   └── analyzeController.js# Validates inputs and handles response
 │   │   ├── middlewares/
 │   │   │   └── uploadMiddleware.js # Multer 5MB memory storage & PDF filter
 │   │   ├── routes/
 │   │   │   └── analyzeRoutes.js    # POST /api/analyze
-│   │   ├── services/
-│   │   │   ├── geminiService.js    # Gemini 2.5 Flash SDK with strict JSON schema
-│   │   │   └── pdfService.js       # pdf-parse text extractor
-│   │   └── index.js                # Express app listener & health endpoint
+│   │   └── services/
+│   │       ├── geminiService.js    # Gemini SDK with strict JSON schema & model fallbacks
+│   │       └── pdfService.js       # pdf-parse in-memory text extractor
 │   ├── scripts/
 │   │   ├── generateSampleResume.js # Creates sample_resume.pdf for testing
 │   │   └── testAnalyzeEndpoint.js  # Automated backend validation suite
@@ -85,84 +89,71 @@ rolefit/
 │
 ├── sample_resume.pdf               # Ready-to-use sample candidate resume
 ├── .gitignore                      # Ignores node_modules, .env, build output
-├── package.json                    # Root monorepo scripts
+├── package.json                    # Root monorepo scripts & serverless dependencies
 └── README.md
 ```
 
 ---
 
-## 🚦 Getting Started
+## ☁️ Deploying to Vercel (Single Project)
 
-### 1. Prerequisites
-- [Node.js](https://nodejs.org/) v18+ (tested on Node v24)
-- A [Google Gemini API Key](https://aistudio.google.com/)
+Deploying both the client and server together on Vercel requires **zero manual configuration** beyond adding your API key:
 
-### 2. Configure Backend Environment
-Edit `server/.env` and replace `your_api_key_here` with your actual Gemini API key:
+### 1. Import Git Repository
+1. Push this project to GitHub / GitLab / Bitbucket.
+2. In the [Vercel Dashboard](https://vercel.com/new), click **"Add New..."** -> **"Project"** and import the repository.
+3. Keep the **Root Directory** as `./` (default).
+
+### 2. Configure Environment Variable
+In Vercel's **Configure Project** screen (or under **Settings -> Environment Variables**):
+- **Key**: `GEMINI_API_KEY`
+- **Value**: `your_actual_gemini_api_key_here`
+
+### 3. Deploy
+Click **Deploy**! Vercel will:
+1. Run `npm install` at root (installing all serverless dependencies).
+2. Execute the `buildCommand`: `cd client && npm install && npm run build`.
+3. Publish `client/dist` as the global static frontend CDN.
+4. Route all `/api/*` traffic automatically to the serverless Express function `api/index.js`.
+
+---
+
+## 🚦 Local Development
+
+### 1. Configure Backend Environment
+Create or edit `server/.env`:
 ```ini
 PORT=5000
 GEMINI_API_KEY=AIzaSy...
 ```
 
-### 3. Start the Backend Server
-In a terminal:
+### 2. Start Both Services
+From the root directory:
 ```bash
-cd server
-npm run dev
-```
-The server will start at `http://localhost:5000`. You can verify it at `http://localhost:5000/api/health`.
+# Terminal 1: Backend Server (runs on http://localhost:5000)
+npm run server
 
-### 4. Start the Frontend Application
-In a separate terminal:
-```bash
-cd client
-npm run dev
+# Terminal 2: Frontend Client (runs on http://localhost:3000)
+npm run client
 ```
-Open your browser at `http://localhost:3000`.
+
+### 3. Open in Browser
+Visit **`http://localhost:3000`**. The Vite development server automatically proxies all `/api/*` calls to the local Express backend on port 5000.
 
 ---
 
 ## 🧪 Testing with Included Sample Data
 
 1. A pre-generated sample resume is available at the root: `sample_resume.pdf` (Alex Chen, Senior Full-Stack Engineer).
-2. Open `http://localhost:3000`.
+2. Open `http://localhost:3000` (or your deployed Vercel domain).
 3. Drag & drop or browse to select `sample_resume.pdf`.
 4. Click the **"Paste Sample JD"** button above the job description box to automatically insert a target Senior Full-Stack Engineer job description.
 5. Click **"Analyze Match"** to trigger the AI ATS evaluation.
 
 ---
 
-## 🔒 API Specification
+## 🔒 Serverless Safety & In-Memory Upload
 
-### `POST /api/analyze`
-**Request:**
-- `Content-Type: multipart/form-data`
-- `resume`: Binary PDF file (max 5MB)
-- `jobDescription`: String (min 20 characters)
-
-**Response Schema (`application/json`):**
-```json
-{
-  "success": true,
-  "data": {
-    "filename": "sample_resume.pdf",
-    "fileSize": 2841,
-    "matchScore": 88,
-    "summary": "The candidate presents exceptional alignment with the Senior Full-Stack Engineer position...",
-    "matchedKeywords": ["React", "TypeScript", "Node.js", "Express", "Tailwind CSS", "PostgreSQL", "Docker", "RESTful APIs"],
-    "missingKeywords": ["GraphQL", "Cypress", "AWS / Google Cloud"],
-    "strengths": [
-      "Over 5 years of verified full-stack development using modern React and Node.js.",
-      "Demonstrated impact optimizing page loads by 38% and reducing API latency by 45%."
-    ],
-    "improvementSuggestions": [
-      {
-        "originalContext": "Cloud infrastructure and CI/CD",
-        "suggestedImprovement": "Explicitly mention AWS services (ECS, S3, RDS) and CI/CD tools (GitHub Actions) utilized in previous deployments.",
-        "reason": "Directly satisfies the target job description's cloud platform requirement and prevents ATS keyword filtering."
-      }
-    ]
-  }
-}
-```
-
+- **No Disk Writes**: Resumes are parsed completely from memory buffer via `multer.memoryStorage()`. This ensures 100% compatibility with Vercel's ephemeral read-only serverless filesystem.
+- **Relative URL Dispatch**: In production, `fetch('/api/analyze')` targets the same host, allowing Vercel's edge network to route requests with minimal latency.
+- **Strict JSON Schema**: AI responses are guaranteed to follow the exact ATS schema with match score, keywords, strengths, and actionable optimizations.

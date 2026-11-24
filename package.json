@@ -1,15 +1,32 @@
 {
   "name": "rolefit",
   "version": "1.0.0",
-  "description": "Smart Resume & Job Description Matcher powered by Gemini 2.5 Flash",
+  "description": "Smart Resume & Job Description Matcher powered by Gemini API",
   "private": true,
+  "type": "module",
   "scripts": {
+    "build": "cd client && npm install && npm run build",
+    "build:client": "npm --prefix client run build",
     "server": "npm --prefix server run dev",
     "client": "npm --prefix client run dev",
-    "install:all": "npm install --prefix server && npm install --prefix client"
+    "start": "node server/src/index.js",
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install"
   },
-  "keywords": ["resume-matcher", "ats", "gemini-api", "full-stack"],
+  "dependencies": {
+    "@google/genai": "^3.6.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
+    "pdf-parse": "^1.1.1"
+  },
+  "keywords": [
+    "resume-matcher",
+    "ats",
+    "gemini-api",
+    "vercel",
+    "full-stack"
+  ],
   "author": "",
   "license": "ISC"
 }
-

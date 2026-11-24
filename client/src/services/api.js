@@ -24,7 +24,7 @@ export async function analyzeResumeAndJD({ resumeFile, jobDescription }) {
     });
   } catch (networkError) {
     throw new Error(
-      'Unable to connect to the server. Please ensure the backend is running on port 5000.'
+      'Unable to connect to the analysis server. Please check your network connection or verify that the service is available.'
     );
   }
 
