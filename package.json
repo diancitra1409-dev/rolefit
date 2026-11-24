@@ -1,0 +1,15 @@
+{
+  "name": "rolefit",
+  "version": "1.0.0",
+  "description": "Smart Resume & Job Description Matcher powered by Gemini 2.5 Flash",
+  "private": true,
+  "scripts": {
+    "server": "npm --prefix server run dev",
+    "client": "npm --prefix client run dev",
+    "install:all": "npm install --prefix server && npm install --prefix client"
+  },
+  "keywords": ["resume-matcher", "ats", "gemini-api", "full-stack"],
+  "author": "",
+  "license": "ISC"
+}
+
