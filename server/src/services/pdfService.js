@@ -1,18 +1,8 @@
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-// Import pdf-parse internals directly so Vercel serverless never triggers index.js test-file lookup
-const pdf = require('pdf-parse/lib/pdf-parse.js');
-// Pre-require pdf.js runtime so @vercel/nft bundles v1.10.100/build/pdf.js & pdf.worker.js
-try {
-  require('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js');
-} catch {
-  // Fallback handled by pdf-parse if path layout differs
-}
-
 export const MAX_RESUME_CHARS = 7000;
 
 /**
- * Extracts plain text from a PDF Buffer, stopping early once MAX_RESUME_CHARS is reached.
+ * Extracts plain text from a PDF Buffer using serverless-safe `unpdf`,
+ * loaded lazily inside the request handler and capped at MAX_RESUME_CHARS.
  * @param {Buffer} buffer - In-memory PDF buffer from multer
  * @returns {Promise<string>} - Extracted text capped at MAX_RESUME_CHARS
  */
@@ -22,41 +12,14 @@ export async function extractTextFromPDF(buffer) {
   }
 
   try {
-    let extractedChars = 0;
+    const { extractText } = await import('unpdf');
+    const { text: rawText } = await extractText(new Uint8Array(buffer), {
+      mergePages: true
+    });
 
-    const pagerender = async (pageData) => {
-      if (extractedChars >= MAX_RESUME_CHARS) {
-        return '';
-      }
-
-      const textContent = await pageData.getTextContent({
-        normalizeWhitespace: false,
-        disableCombineTextItems: false
-      });
-
-      let lastY;
-      let pageText = '';
-      const remainingBudget = MAX_RESUME_CHARS - extractedChars + 200;
-
-      for (const item of textContent.items) {
-        if (lastY === item.transform[5] || lastY === undefined) {
-          pageText += item.str;
-        } else {
-          pageText += '\n' + item.str;
-        }
-        lastY = item.transform[5];
-
-        if (pageText.length >= remainingBudget) {
-          break;
-        }
-      }
-
-      extractedChars += pageText.trim().length;
-      return pageText;
-    };
-
-    const data = await pdf(buffer, { pagerender });
-    const text = (data.text ? data.text.trim() : '').slice(0, MAX_RESUME_CHARS).trim();
+    const text = (typeof rawText === 'string' ? rawText.trim() : '')
+      .slice(0, MAX_RESUME_CHARS)
+      .trim();
 
     // Validate if the PDF has sufficient extractable text (e.g. not an image-only scan)
     if (text.length < 30) {
@@ -67,7 +30,6 @@ export async function extractTextFromPDF(buffer) {
 
     return text;
   } catch (err) {
-    // Re-throw our custom error or wrap pdf-parse internal errors
     if (err.message && err.message.includes('extractable text')) {
       throw err;
     }

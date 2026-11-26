@@ -77,6 +77,9 @@ export default function App() {
     } catch (err) {
       setResult(null);
       setError(err.message || 'An unexpected error occurred during analysis.');
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     } finally {
       setIsLoading(false);
     }

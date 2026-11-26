@@ -6,6 +6,8 @@ import { handleAnalyze } from '../controllers/analyzeController.js';
 const router = express.Router();
 
 router.post('/analyze', async (req, res) => {
+  const stepTracker = { currentStep: 'parse_upload' };
+
   try {
     await new Promise((resolve, reject) => {
       uploadResume.single('resume')(req, res, (err) => {
@@ -17,15 +19,15 @@ router.post('/analyze', async (req, res) => {
       });
     });
 
-    await handleAnalyze(req, res);
+    await handleAnalyze(req, res, stepTracker);
   } catch (err) {
     if (err instanceof multer.MulterError || err?.status === 400) {
       return handleMulterError(err, req, res);
     }
-    console.error('[/api/analyze Route Error]', err);
+    console.error(`[/api/analyze Error at ${stepTracker.currentStep}]`, err);
     return res.status(500).json({
       success: false,
-      error: err?.message || 'Failed to analyze resume'
+      error: `[${stepTracker.currentStep}] ${err?.message || 'Failed to analyze resume'}`
     });
   }
 });

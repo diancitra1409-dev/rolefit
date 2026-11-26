@@ -6,7 +6,7 @@ const PER_MODEL_TIMEOUT_MS = 7500;
 const TOTAL_ROTATION_BUDGET_MS = 45000;
 const MAX_OUTPUT_TOKENS = 2048;
 
-const EXCLUDED_MODEL_REGEX = /(gemma|embedding|imagen|veo|tts|aqa)/i;
+const EXCLUDED_MODEL_REGEX = /(gemma|embedding|imagen|veo|tts|aqa|nano-banana|-image)/i;
 const SPECIALIZED_MODEL_REGEX = /(image|audio|robotics|computer-use|deep-research|customtools)/i;
 
 const FALLBACK_FAST_MODELS = [
@@ -124,7 +124,7 @@ async function getAvailableModels(ai, apiKey) {
           config: {
             pageSize: 100,
             httpOptions: {
-              timeout: PER_MODEL_TIMEOUT_MS,
+              timeout: 10000,
               retryOptions: { attempts: 1 }
             }
           }
@@ -201,7 +201,9 @@ async function callModelWithTimeout(ai, model, prompt, systemInstruction, respon
         temperature: 0.2,
         abortSignal: controller.signal,
         httpOptions: {
-          timeout: PER_MODEL_TIMEOUT_MS,
+          // Gemini API rejects X-Server-Timeout < 10s with 400 INVALID_ARGUMENT;
+          // client-side AbortController enforces the 7500ms per-model timeout cleanly.
+          timeout: 10000,
           retryOptions: { attempts: 1 }
         }
       }
@@ -361,9 +363,10 @@ function normalizeAnalysisResult(parsed) {
  * @param {Object} params
  * @param {string} params.resumeText
  * @param {string} params.jobDescription
+ * @param {Function} [params.onStep] - Optional step callback ('call_gemini' | 'parse_json')
  * @param {Object} [params.aiClient] - Optional injected GoogleGenAI-compatible client for testing
  */
-export async function analyzeFit({ resumeText, jobDescription, aiClient }) {
+export async function analyzeFit({ resumeText, jobDescription, onStep, aiClient }) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!aiClient && (!apiKey || apiKey === 'your_api_key_here')) {
     throw new Error(
@@ -422,6 +425,7 @@ ${cappedResume}`;
     }
 
     try {
+      onStep?.('call_gemini');
       const response = await callModelWithTimeout(
         ai,
         model,
@@ -430,6 +434,7 @@ ${cappedResume}`;
         RESPONSE_SCHEMA
       );
 
+      onStep?.('parse_json');
       const rawText = response?.text;
       if (!rawText || !rawText.trim()) {
         const finishReason = response?.candidates?.[0]?.finishReason;

@@ -3,8 +3,10 @@ import { analyzeFit } from '../services/geminiService.js';
 
 export const MAX_JOB_DESCRIPTION_CHARS = 5000;
 
-export async function handleAnalyze(req, res) {
+export async function handleAnalyze(req, res, stepTracker = { currentStep: 'parse_upload' }) {
   try {
+    stepTracker.currentStep = 'parse_upload';
+
     // 1. Validate Job Description
     const rawJobDescription = req.body?.jobDescription?.trim();
     if (!rawJobDescription) {
@@ -33,8 +35,10 @@ export async function handleAnalyze(req, res) {
 
     let resumeText = '';
     if (req.file) {
+      stepTracker.currentStep = 'extract_pdf';
       resumeText = await extractTextFromPDF(req.file.buffer);
     } else if (rawPastedResume) {
+      stepTracker.currentStep = 'extract_pdf';
       if (rawPastedResume.length < 30) {
         return res.status(400).json({
           success: false,
@@ -50,9 +54,13 @@ export async function handleAnalyze(req, res) {
     }
 
     // 3. Analyze with fast rotating Gemini models
+    stepTracker.currentStep = 'call_gemini';
     const analysisResult = await analyzeFit({
       resumeText,
-      jobDescription
+      jobDescription,
+      onStep: (step) => {
+        stepTracker.currentStep = step;
+      }
     });
 
     return res.status(200).json({
@@ -64,10 +72,10 @@ export async function handleAnalyze(req, res) {
       }
     });
   } catch (err) {
-    console.error('[/api/analyze Controller Error]', err);
+    console.error(`[/api/analyze Error at ${stepTracker.currentStep}]`, err);
     return res.status(500).json({
       success: false,
-      error: err?.message || 'Failed to analyze resume'
+      error: `[${stepTracker.currentStep}] ${err?.message || 'Failed to analyze resume'}`
     });
   }
 }
