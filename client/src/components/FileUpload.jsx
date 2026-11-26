@@ -1,7 +1,16 @@
 import React, { useRef, useState } from 'react';
-import { UploadCloud, FileText, CheckCircle2, X, AlertCircle } from 'lucide-react';
+import { UploadCloud, FileText, CheckCircle2, X, AlertCircle, AlignLeft } from 'lucide-react';
 
-export default function FileUpload({ file, onFileSelect, onFileRemove, disabled }) {
+export default function FileUpload({
+  file,
+  onFileSelect,
+  onFileRemove,
+  resumeMode = 'pdf',
+  onModeChange,
+  resumeText = '',
+  onResumeTextChange,
+  disabled
+}) {
   const [isDragging, setIsDragging] = useState(false);
   const [localError, setLocalError] = useState(null);
   const inputRef = useRef(null);
@@ -58,14 +67,47 @@ export default function FileUpload({ file, onFileSelect, onFileRemove, disabled 
     return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
   };
 
+  const charCount = resumeText.length;
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between gap-2 mb-2">
         <label className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
           <FileText className="w-4 h-4 text-indigo-600" />
-          Candidate Resume (PDF)
+          Candidate Resume
         </label>
-        <span className="text-xs text-slate-500">Max size: 5MB</span>
+
+        {onModeChange ? (
+          <div className="inline-flex rounded-lg bg-slate-100 p-0.5 border border-slate-200 text-xs">
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onModeChange('pdf')}
+              className={`px-2.5 py-1 rounded-md font-medium transition-colors ${
+                resumeMode === 'pdf'
+                  ? 'bg-white text-indigo-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Upload PDF
+            </button>
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={() => onModeChange('text')}
+              className={`px-2.5 py-1 rounded-md font-medium transition-colors flex items-center gap-1 ${
+                resumeMode === 'text'
+                  ? 'bg-white text-indigo-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <AlignLeft className="w-3 h-3" />
+              Paste Text
+            </button>
+          </div>
+        ) : (
+          <span className="text-xs text-slate-500">Max size: 5MB</span>
+        )}
       </div>
 
       <input
@@ -77,7 +119,29 @@ export default function FileUpload({ file, onFileSelect, onFileRemove, disabled 
         disabled={disabled}
       />
 
-      {!file ? (
+      {resumeMode === 'text' ? (
+        <div className="flex-1 flex flex-col">
+          <textarea
+            value={resumeText}
+            onChange={(e) => onResumeTextChange?.(e.target.value)}
+            disabled={disabled}
+            placeholder="Paste your plain-text resume here (skills, experience, education)..."
+            className="flex-1 min-h-[220px] w-full rounded-xl border border-slate-300 bg-white p-4 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500 resize-none leading-relaxed"
+          />
+          <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+            <span>{charCount} characters (capped at 7,000 for fast analysis)</span>
+            {resumeText && !disabled && (
+              <button
+                type="button"
+                onClick={() => onResumeTextChange?.('')}
+                className="text-slate-500 hover:text-rose-600 font-medium"
+              >
+                Clear text
+              </button>
+            )}
+          </div>
+        </div>
+      ) : !file ? (
         <div
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -96,7 +160,7 @@ export default function FileUpload({ file, onFileSelect, onFileRemove, disabled 
             Click to upload or drag & drop your resume
           </p>
           <p className="text-xs text-slate-500 mt-1">
-            Accepts standard text-based PDF format
+            Accepts standard text-based PDF format (max 5MB)
           </p>
           <span className="mt-4 inline-flex items-center px-3 py-1 rounded-md text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
             Browse Files (.pdf)
@@ -162,4 +226,3 @@ export default function FileUpload({ file, onFileSelect, onFileRemove, disabled 
     </div>
   );
 }
-

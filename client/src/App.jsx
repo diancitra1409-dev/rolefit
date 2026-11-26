@@ -8,7 +8,9 @@ import { analyzeResumeAndJD, checkServerHealth } from './services/api.js';
 import { Sparkles, Loader2, ArrowRight } from 'lucide-react';
 
 export default function App() {
+  const [resumeMode, setResumeMode] = useState('pdf');
   const [resumeFile, setResumeFile] = useState(null);
+  const [resumeText, setResumeText] = useState('');
   const [jobDescription, setJobDescription] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStepIndex, setLoadingStepIndex] = useState(0);
@@ -47,8 +49,13 @@ export default function App() {
     setError(null);
 
     // Validation
-    if (!resumeFile) {
-      setError('Please upload your resume in PDF format (max 5MB).');
+    if (resumeMode === 'pdf' && !resumeFile) {
+      setError('Please upload your resume in PDF format (max 5MB) or switch to Paste Text.');
+      return;
+    }
+
+    if (resumeMode === 'text' && resumeText.trim().length < 30) {
+      setError('Please paste your resume text (at least 30 characters).');
       return;
     }
 
@@ -62,7 +69,8 @@ export default function App() {
 
     try {
       const data = await analyzeResumeAndJD({
-        resumeFile,
+        resumeFile: resumeMode === 'pdf' ? resumeFile : null,
+        resumeText: resumeMode === 'text' ? resumeText.trim() : '',
         jobDescription: jobDescription.trim()
       });
       setResult(data);
@@ -76,12 +84,15 @@ export default function App() {
 
   const handleReset = () => {
     setResumeFile(null);
+    setResumeText('');
     setJobDescription('');
     setResult(null);
     setError(null);
   };
 
-  const isFormValid = Boolean(resumeFile && jobDescription.trim().length >= 20);
+  const hasValidResume =
+    resumeMode === 'pdf' ? Boolean(resumeFile) : resumeText.trim().length >= 30;
+  const isFormValid = Boolean(hasValidResume && jobDescription.trim().length >= 20);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans selection:bg-indigo-100 selection:text-indigo-900">
@@ -122,7 +133,7 @@ export default function App() {
             {/* Input Dual-Panel Card */}
             <form onSubmit={handleAnalyze} className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xs">
-                {/* Left: PDF Upload */}
+                {/* Left: PDF Upload or Pasted Text */}
                 <FileUpload
                   file={resumeFile}
                   onFileSelect={(file) => {
@@ -130,6 +141,16 @@ export default function App() {
                     setError(null);
                   }}
                   onFileRemove={() => setResumeFile(null)}
+                  resumeMode={resumeMode}
+                  onModeChange={(mode) => {
+                    setResumeMode(mode);
+                    setError(null);
+                  }}
+                  resumeText={resumeText}
+                  onResumeTextChange={(val) => {
+                    setResumeText(val);
+                    setError(null);
+                  }}
                   disabled={isLoading}
                 />
 

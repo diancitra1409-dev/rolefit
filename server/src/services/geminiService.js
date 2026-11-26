@@ -119,32 +119,40 @@ async function getAvailableModels(ai, apiKey) {
 
   if (!modelCache.modelsPromise) {
     modelCache.modelsPromise = (async () => {
-      const pager = await ai.models.list({
-        config: {
-          pageSize: 100,
-          httpOptions: {
-            timeout: PER_MODEL_TIMEOUT_MS,
-            retryOptions: { attempts: 1 }
+      try {
+        const pager = await ai.models.list({
+          config: {
+            pageSize: 100,
+            httpOptions: {
+              timeout: PER_MODEL_TIMEOUT_MS,
+              retryOptions: { attempts: 1 }
+            }
           }
+        });
+
+        const rawModels = [];
+        if (pager && typeof pager[Symbol.asyncIterator] === 'function') {
+          for await (const m of pager) {
+            rawModels.push(m);
+          }
+        } else if (Array.isArray(pager?.page)) {
+          rawModels.push(...pager.page);
+        } else if (Array.isArray(pager)) {
+          rawModels.push(...pager);
         }
-      });
 
-      const rawModels = [];
-      for await (const model of pager) {
-        rawModels.push(model);
+        const sorted = filterAndSortGeminiModels(rawModels);
+        if (sorted.length === 0) {
+          throw new Error('No eligible Gemini generateContent models returned by ai.models.list().');
+        }
+
+        modelCache.models = sorted;
+        return sorted;
+      } catch (err) {
+        modelCache.modelsPromise = null;
+        throw err;
       }
-
-      const sorted = filterAndSortGeminiModels(rawModels);
-      if (sorted.length === 0) {
-        throw new Error('No eligible Gemini generateContent models returned by ai.models.list().');
-      }
-
-      modelCache.models = sorted;
-      return sorted;
-    })().catch((err) => {
-      modelCache.modelsPromise = null;
-      throw err;
-    });
+    })();
   }
 
   try {
@@ -397,6 +405,11 @@ ${cappedResume}`;
   for (const model of discoveredModels) {
     if (!candidateModels.includes(model)) {
       candidateModels.push(model);
+    }
+  }
+  for (const fallbackModel of FALLBACK_FAST_MODELS) {
+    if (!candidateModels.includes(fallbackModel)) {
+      candidateModels.push(fallbackModel);
     }
   }
 

@@ -26,23 +26,40 @@ function isValidAnalysisPayload(data) {
 }
 
 /**
- * Uploads resume PDF and job description to the backend analyzer.
+ * Uploads resume PDF or sends pasted resume text with job description to the backend analyzer.
  * @param {Object} params
- * @param {File} params.resumeFile - The PDF resume file
+ * @param {File|null} [params.resumeFile] - The PDF resume file
+ * @param {string} [params.resumeText] - Pasted plain-text resume content
  * @param {string} params.jobDescription - The target job description text
  * @returns {Promise<Object>} Analysis result
  */
-export async function analyzeResumeAndJD({ resumeFile, jobDescription }) {
-  const formData = new FormData();
-  formData.append('resume', resumeFile);
-  formData.append('jobDescription', jobDescription);
+export async function analyzeResumeAndJD({ resumeFile, resumeText, jobDescription }) {
+  let fetchOptions;
+
+  if (resumeFile) {
+    const formData = new FormData();
+    formData.append('resume', resumeFile);
+    formData.append('jobDescription', jobDescription);
+    fetchOptions = {
+      method: 'POST',
+      body: formData
+    };
+  } else {
+    fetchOptions = {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        resumeText: resumeText || '',
+        jobDescription
+      })
+    };
+  }
 
   let response;
   try {
-    response = await fetch(`${API_BASE}/api/analyze`, {
-      method: 'POST',
-      body: formData
-    });
+    response = await fetch(`${API_BASE}/api/analyze`, fetchOptions);
   } catch {
     throw new Error(
       'Unable to connect to the analysis server. Please check your network connection or verify that the service is available.'
@@ -61,7 +78,7 @@ export async function analyzeResumeAndJD({ resumeFile, jobDescription }) {
 
   if (!response.ok) {
     const errorMessage =
-      result?.error ||
+      (result && typeof result.error === 'string' && result.error.trim()) ||
       `Analysis failed with server status ${response.status} (${response.statusText || 'Error'})`;
     throw new Error(errorMessage);
   }

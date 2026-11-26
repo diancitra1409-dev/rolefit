@@ -1,19 +1,11 @@
-import { extractTextFromPDF } from '../services/pdfService.js';
+import { extractTextFromPDF, MAX_RESUME_CHARS } from '../services/pdfService.js';
 import { analyzeFit } from '../services/geminiService.js';
 
 export const MAX_JOB_DESCRIPTION_CHARS = 5000;
 
-export async function handleAnalyze(req, res, next) {
+export async function handleAnalyze(req, res) {
   try {
-    // 1. Validate Resume File
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        error: 'Resume file is required. Please upload a PDF resume.'
-      });
-    }
-
-    // 2. Validate & Cap Job Description
+    // 1. Validate Job Description
     const rawJobDescription = req.body?.jobDescription?.trim();
     if (!rawJobDescription) {
       return res.status(400).json({
@@ -31,10 +23,33 @@ export async function handleAnalyze(req, res, next) {
 
     const jobDescription = rawJobDescription.slice(0, MAX_JOB_DESCRIPTION_CHARS);
 
-    // 3. Extract text from PDF buffer (capped at 7,000 characters)
-    const resumeText = await extractTextFromPDF(req.file.buffer);
+    // 2. Validate & Extract Resume (supports uploaded PDF or pasted resume text)
+    const rawPastedResume =
+      typeof req.body?.resumeText === 'string'
+        ? req.body.resumeText.trim()
+        : typeof req.body?.resume === 'string'
+          ? req.body.resume.trim()
+          : '';
 
-    // 4. Analyze with fast rotating Gemini models
+    let resumeText = '';
+    if (req.file) {
+      resumeText = await extractTextFromPDF(req.file.buffer);
+    } else if (rawPastedResume) {
+      if (rawPastedResume.length < 30) {
+        return res.status(400).json({
+          success: false,
+          error: 'Pasted resume text is too short. Please provide at least 30 characters.'
+        });
+      }
+      resumeText = rawPastedResume.slice(0, MAX_RESUME_CHARS);
+    } else {
+      return res.status(400).json({
+        success: false,
+        error: 'Resume file is required. Please upload a PDF resume or paste your resume text.'
+      });
+    }
+
+    // 3. Analyze with fast rotating Gemini models
     const analysisResult = await analyzeFit({
       resumeText,
       jobDescription
@@ -43,12 +58,16 @@ export async function handleAnalyze(req, res, next) {
     return res.status(200).json({
       success: true,
       data: {
-        filename: req.file.originalname,
-        fileSize: req.file.size,
+        filename: req.file ? req.file.originalname : 'Pasted Resume Text',
+        fileSize: req.file ? req.file.size : null,
         ...analysisResult
       }
     });
   } catch (err) {
-    next(err);
+    console.error('[/api/analyze Controller Error]', err);
+    return res.status(500).json({
+      success: false,
+      error: err?.message || 'Failed to analyze resume'
+    });
   }
 }

@@ -1,6 +1,13 @@
 import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
-const pdf = require('pdf-parse');
+// Import pdf-parse internals directly so Vercel serverless never triggers index.js test-file lookup
+const pdf = require('pdf-parse/lib/pdf-parse.js');
+// Pre-require pdf.js runtime so @vercel/nft bundles v1.10.100/build/pdf.js & pdf.worker.js
+try {
+  require('pdf-parse/lib/pdf.js/v1.10.100/build/pdf.js');
+} catch {
+  // Fallback handled by pdf-parse if path layout differs
+}
 
 export const MAX_RESUME_CHARS = 7000;
 
