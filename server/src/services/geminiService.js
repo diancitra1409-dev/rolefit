@@ -4,7 +4,7 @@ const MAX_RESUME_CHARS = 7000;
 const MAX_JOB_DESCRIPTION_CHARS = 5000;
 const PER_MODEL_TIMEOUT_MS = 7500;
 const TOTAL_ROTATION_BUDGET_MS = 45000;
-const MAX_OUTPUT_TOKENS = 750;
+const MAX_OUTPUT_TOKENS = 2048;
 
 const EXCLUDED_MODEL_REGEX = /(gemma|embedding|imagen|veo|tts|aqa)/i;
 const SPECIALIZED_MODEL_REGEX = /(image|audio|robotics|computer-use|deep-research|customtools)/i;
@@ -268,6 +268,87 @@ const RESPONSE_SCHEMA = {
 };
 
 /**
+ * Strips markdown code fences, extracts the outermost JSON object block, and parses it safely.
+ * @param {string} rawText
+ * @returns {Object}
+ */
+export function extractAndParseJson(rawText) {
+  if (typeof rawText !== 'string' || !rawText.trim()) {
+    throw new Error('Model returned an empty response.');
+  }
+
+  let cleaned = rawText.trim();
+
+  // Strip ```json ... ``` or ``` ... ``` markdown fences if present
+  const fenceMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fenceMatch && fenceMatch[1]) {
+    cleaned = fenceMatch[1].trim();
+  } else {
+    cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+  }
+
+  // Extract outermost { ... } block so leading/trailing prose cannot break JSON.parse
+  const firstBrace = cleaned.indexOf('{');
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    throw new SyntaxError('Response does not contain a valid JSON object.');
+  }
+
+  const jsonCandidate = cleaned.slice(firstBrace, lastBrace + 1);
+  const parsed = JSON.parse(jsonCandidate);
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Parsed JSON response is not an object.');
+  }
+
+  return parsed;
+}
+
+/**
+ * Validates and normalizes the parsed JSON to guarantee exact frontend schema compatibility.
+ * @param {Object} parsed
+ * @returns {Object}
+ */
+function normalizeAnalysisResult(parsed) {
+  const numericScore = Number(parsed.matchScore);
+  if (!Number.isFinite(numericScore)) {
+    throw new Error('AI response is missing a valid numeric matchScore.');
+  }
+
+  const summary = typeof parsed.summary === 'string' ? parsed.summary.trim() : '';
+  if (!summary) {
+    throw new Error('AI response is missing a summary.');
+  }
+
+  const toStringArray = (val) =>
+    Array.isArray(val)
+      ? val.map((item) => String(item ?? '').trim()).filter(Boolean)
+      : [];
+
+  const improvementSuggestions = Array.isArray(parsed.improvementSuggestions)
+    ? parsed.improvementSuggestions
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => ({
+          originalContext: String(item.originalContext ?? '').trim(),
+          suggestedImprovement: String(item.suggestedImprovement ?? '').trim(),
+          reason: String(item.reason ?? '').trim()
+        }))
+        .filter(
+          (item) => item.originalContext || item.suggestedImprovement || item.reason
+        )
+    : [];
+
+  return {
+    matchScore: Math.max(0, Math.min(100, Math.round(numericScore))),
+    summary,
+    matchedKeywords: toStringArray(parsed.matchedKeywords),
+    missingKeywords: toStringArray(parsed.missingKeywords),
+    strengths: toStringArray(parsed.strengths),
+    improvementSuggestions
+  };
+}
+
+/**
  * Analyzes candidate resume against target job description using dynamic fast Gemini model rotation.
  * @param {Object} params
  * @param {string} params.resumeText
@@ -337,19 +418,19 @@ ${cappedResume}`;
       );
 
       const rawText = response?.text;
-      if (!rawText) {
-        throw new Error(`Model ${model} returned an empty response.`);
+      if (!rawText || !rawText.trim()) {
+        const finishReason = response?.candidates?.[0]?.finishReason;
+        throw new Error(
+          `Model ${model} returned an empty response${finishReason ? ` (finishReason: ${finishReason})` : ''}.`
+        );
       }
 
-      const parsedData = JSON.parse(rawText);
-
-      if (typeof parsedData.matchScore === 'number') {
-        parsedData.matchScore = Math.max(0, Math.min(100, Math.round(parsedData.matchScore)));
-      }
+      const parsedData = extractAndParseJson(rawText);
+      const normalizedResult = normalizeAnalysisResult(parsedData);
 
       // Cache whichever model succeeded for subsequent requests
       modelCache.preferredModel = model;
-      return parsedData;
+      return normalizedResult;
     } catch (err) {
       lastError = err;
       const status = getErrorStatus(err);

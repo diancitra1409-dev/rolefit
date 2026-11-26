@@ -58,6 +58,7 @@ export default function App() {
     }
 
     setIsLoading(true);
+    setResult(null);
 
     try {
       const data = await analyzeResumeAndJD({
@@ -66,6 +67,7 @@ export default function App() {
       });
       setResult(data);
     } catch (err) {
+      setResult(null);
       setError(err.message || 'An unexpected error occurred during analysis.');
     } finally {
       setIsLoading(false);

@@ -2,7 +2,28 @@
  * API service for RoleFit backend communication
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || '';
+const API_BASE = import.meta.env?.VITE_API_URL || '';
+
+/**
+ * Validates that the analysis payload matches the schema expected by ResultsDashboard.
+ * @param {any} data
+ * @returns {boolean}
+ */
+function isValidAnalysisPayload(data) {
+  if (!data || typeof data !== 'object') return false;
+
+  const hasValidScore =
+    typeof data.matchScore === 'number' && Number.isFinite(data.matchScore);
+  const hasSummary =
+    typeof data.summary === 'string' && data.summary.trim().length > 0;
+  const hasRequiredArrays =
+    Array.isArray(data.matchedKeywords) &&
+    Array.isArray(data.missingKeywords) &&
+    Array.isArray(data.strengths) &&
+    Array.isArray(data.improvementSuggestions);
+
+  return hasValidScore && hasSummary && hasRequiredArrays;
+}
 
 /**
  * Uploads resume PDF and job description to the backend analyzer.
@@ -20,25 +41,41 @@ export async function analyzeResumeAndJD({ resumeFile, jobDescription }) {
   try {
     response = await fetch(`${API_BASE}/api/analyze`, {
       method: 'POST',
-      body: formData,
+      body: formData
     });
-  } catch (networkError) {
+  } catch {
     throw new Error(
       'Unable to connect to the analysis server. Please check your network connection or verify that the service is available.'
     );
   }
 
-  const result = await response.json().catch(() => null);
+  let result = null;
+  const rawBody = await response.text().catch(() => '');
+  if (rawBody) {
+    try {
+      result = JSON.parse(rawBody);
+    } catch {
+      result = null;
+    }
+  }
 
   if (!response.ok) {
     const errorMessage =
       result?.error ||
-      `Analysis failed with server status ${response.status} (${response.statusText})`;
+      `Analysis failed with server status ${response.status} (${response.statusText || 'Error'})`;
     throw new Error(errorMessage);
   }
 
   if (!result || !result.success || !result.data) {
-    throw new Error('Invalid response format received from analysis server.');
+    throw new Error(
+      result?.error || 'Invalid response format received from analysis server.'
+    );
+  }
+
+  if (!isValidAnalysisPayload(result.data)) {
+    throw new Error(
+      'The analysis response was incomplete or malformed. Please try analyzing again.'
+    );
   }
 
   return result.data;
@@ -56,4 +93,3 @@ export async function checkServerHealth() {
     return { healthy: false };
   }
 }
-
