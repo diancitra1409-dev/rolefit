@@ -2,10 +2,12 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const pdf = require('pdf-parse');
 
+export const MAX_RESUME_CHARS = 7000;
+
 /**
- * Extracts plain text from a PDF Buffer.
+ * Extracts plain text from a PDF Buffer, stopping early once MAX_RESUME_CHARS is reached.
  * @param {Buffer} buffer - In-memory PDF buffer from multer
- * @returns {Promise<string>} - Extracted text
+ * @returns {Promise<string>} - Extracted text capped at MAX_RESUME_CHARS
  */
 export async function extractTextFromPDF(buffer) {
   if (!buffer || !Buffer.isBuffer(buffer)) {
@@ -13,8 +15,41 @@ export async function extractTextFromPDF(buffer) {
   }
 
   try {
-    const data = await pdf(buffer);
-    const text = data.text ? data.text.trim() : '';
+    let extractedChars = 0;
+
+    const pagerender = async (pageData) => {
+      if (extractedChars >= MAX_RESUME_CHARS) {
+        return '';
+      }
+
+      const textContent = await pageData.getTextContent({
+        normalizeWhitespace: false,
+        disableCombineTextItems: false
+      });
+
+      let lastY;
+      let pageText = '';
+      const remainingBudget = MAX_RESUME_CHARS - extractedChars + 200;
+
+      for (const item of textContent.items) {
+        if (lastY === item.transform[5] || lastY === undefined) {
+          pageText += item.str;
+        } else {
+          pageText += '\n' + item.str;
+        }
+        lastY = item.transform[5];
+
+        if (pageText.length >= remainingBudget) {
+          break;
+        }
+      }
+
+      extractedChars += pageText.trim().length;
+      return pageText;
+    };
+
+    const data = await pdf(buffer, { pagerender });
+    const text = (data.text ? data.text.trim() : '').slice(0, MAX_RESUME_CHARS).trim();
 
     // Validate if the PDF has sufficient extractable text (e.g. not an image-only scan)
     if (text.length < 30) {
@@ -32,4 +67,3 @@ export async function extractTextFromPDF(buffer) {
     throw new Error(`Failed to parse PDF document: ${err.message}`);
   }
 }
-
